@@ -3,6 +3,7 @@
 #include <omp.h>
 #include <time.h>
 #include <sys/time.h>
+#include <w32api/mqoai.h>
 
 static const long Num_To_Add = 1000000000;
 static const double Scale = 10.0 / RAND_MAX;
@@ -16,9 +17,26 @@ long add_serial(const char *numbers) {
 }
 
 long add_parallel(const char *numbers) {
-    long sum = 0;
-
-    return sum;
+    // track global_sum across all threads
+    long global_sum = 0;
+    // determine num to add for each thread
+    int local_num_to_add = Num_To_Add/omp_get_max_threads();
+#pragma omp parallel num_threads(omp_get_max_threads())
+    {
+        // get thread number
+        int thread_number = omp_get_thread_num();
+        // track local sum for current thread
+        long local_sum = 0;
+        // Divide the numbers array into four (or however many cores you happen to have) separate parts for each thread to operate on
+        for(int i = thread_number * local_num_to_add; i < (thread_number + 1) * local_num_to_add; i++)
+        {
+            local_sum += numbers[i];
+        }
+        // handle critical section
+#pragma omp critical
+        global_sum += local_sum;
+    }
+    return global_sum;
 }
 
 int main() {
