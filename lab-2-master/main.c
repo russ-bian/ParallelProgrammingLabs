@@ -4,9 +4,62 @@
 #include <time.h>
 #include <sys/time.h>
 #include <w32api/mqoai.h>
+#include <limits.h>
 
 static const long Num_To_Add = 1000000000;
 static const double Scale = 10.0 / RAND_MAX;
+
+// Code for Queue taken from: https://www.geeksforgeeks.org/queue-set-1introduction-and-array-implementation/
+// A structure to represent a queue
+struct Queue
+{
+    int front, rear, size;
+    unsigned capacity;
+    long* array;
+};
+
+// function to create a queue of given capacity.
+// It initializes size of queue as 0
+struct Queue* createQueue(unsigned capacity)
+{
+    struct Queue* queue = (struct Queue*) malloc(sizeof(struct Queue));
+    queue->capacity = capacity;
+    queue->front = queue->size = 0;
+    queue->rear = capacity - 1;  // This is important, see the enqueue
+    queue->array = (long*) malloc(queue->capacity * sizeof(long));
+    return queue;
+}
+
+// Queue is full when size becomes equal to the capacity
+int isFull(struct Queue* queue)
+{  return (queue->size == queue->capacity);  }
+
+// Queue is empty when size is 0
+int isEmpty(struct Queue* queue)
+{  return (queue->size == 0); }
+
+// Function to add an item to the queue.
+// It changes rear and size
+void enqueue(struct Queue* queue, long item)
+{
+    if (isFull(queue))
+        return;
+    queue->rear = (queue->rear + 1)%queue->capacity;
+    queue->array[queue->rear] = item;
+    queue->size = queue->size + 1;
+}
+
+// Function to remove an item from queue.
+// It changes front and size
+long dequeue(struct Queue* queue)
+{
+    if (isEmpty(queue))
+        return INT_MIN;
+    long item = queue->array[queue->front];
+    queue->front = (queue->front + 1)%queue->capacity;
+    queue->size = queue->size - 1;
+    return item;
+}
 
 long add_serial(const char *numbers) {
     long sum = 0;
@@ -17,8 +70,10 @@ long add_serial(const char *numbers) {
 }
 
 long add_parallel(const char *numbers) {
-    // track global_sum across all threads
+    // tracks global sum
     long global_sum = 0;
+    // message queue for control thread
+    struct Queue* message_queue = createQueue(3);
     // determine num to add for each thread
     int local_num_to_add = Num_To_Add/omp_get_max_threads();
 #pragma omp parallel num_threads(omp_get_max_threads())
@@ -32,9 +87,29 @@ long add_parallel(const char *numbers) {
         {
             local_sum += numbers[i];
         }
-        // handle critical section
-#pragma omp critical
-        global_sum += local_sum;
+        // worker threads send message to control thread
+        if(thread_number != 0) {
+            enqueue(message_queue, local_sum);
+        }
+        // control thread
+        else if(thread_number == 0)
+        {
+            global_sum += local_sum;
+            int i = 0;
+            // spin lock
+            while(1)
+            {
+                // spin lock while queue is empty
+                while(isEmpty(message_queue)) {}
+                global_sum += dequeue(message_queue);
+                i++;
+                // break after receiving messages from all other threads
+                if(i == 3)
+                {
+                    break;
+                }
+            }
+        }
     }
     return global_sum;
 }
