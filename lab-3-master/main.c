@@ -20,6 +20,7 @@ static const long double Zoom = 2;
 
 // We use the coloring schema outlined from https://solarianprogrammer.com/2013/02/28/mandelbrot-set-cpp-11/
 void calc_colors(RGB_Pixel *colors) {
+// Use Parallel for
 # pragma omp parallel for
     for (int i = 0; i < Max_Iterations; i++) {
         double t = (double) i / Max_Iterations;
@@ -57,7 +58,7 @@ int main(int argc, const char **argv) {
             .real = (max_bounds.real - min_bounds.real) / Image_Width,
             .imaginary = (max_bounds.real - min_bounds.real) / Image_Height
     };
-
+// Parallelize For loop using static scheduling
 # pragma omp parallel for num_threads(omp_get_max_threads()) schedule(static, 1)
     // Loop through the image pixels
     for (int img_y = 0; img_y < Image_Height; img_y++) {
